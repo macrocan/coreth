@@ -536,6 +536,7 @@ func WriteBlock(db ethdb.KeyValueWriter, block *types.Block) {
 
 // DeleteBlock removes all block data associated with a hash.
 func DeleteBlock(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
+	DeleteInternalTxs(db, hash, number)
 	DeleteReceipts(db, hash, number)
 	DeleteHeader(db, hash, number)
 	DeleteBody(db, hash, number)

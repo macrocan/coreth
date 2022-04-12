@@ -66,7 +66,7 @@ func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consen
 // Process returns the receipts and logs accumulated during the process and
 // returns the amount of gas that was used in the process. If any of the
 // transactions failed to execute due to insufficient gas it will return an error.
-func (p *StateProcessor) Process(block *types.Block, parent *types.Header, statedb *state.StateDB, cfg vm.Config) (types.Receipts, []*types.Log, uint64, error) {
+func (p *StateProcessor) Process(block *types.Block, parent *types.Header, statedb *state.StateDB, cfg vm.Config) (types.Receipts, []*types.Log, types.InternalTxs, uint64, error) {
 	var (
 		receipts    types.Receipts
 		usedGas     = new(uint64)
@@ -75,7 +75,14 @@ func (p *StateProcessor) Process(block *types.Block, parent *types.Header, state
 		blockNumber = block.Number()
 		allLogs     []*types.Log
 		gp          = new(GasPool).AddGas(block.GasLimit())
+		tracer      *vm.ActionLogger
+		internalTxs types.InternalTxs
 	)
+	if cfg.TraceAction {
+		cfg.Debug = true
+		tracer = vm.NewActionLogger()
+		cfg.Tracer = tracer
+	}
 	// Mutate the block and state according to any hard-fork specs
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
 		misc.ApplyDAOHardFork(statedb)
@@ -86,22 +93,31 @@ func (p *StateProcessor) Process(block *types.Block, parent *types.Header, state
 	for i, tx := range block.Transactions() {
 		msg, err := tx.AsMessage(types.MakeSigner(p.config, header.Number, new(big.Int).SetUint64(header.Time)), header.BaseFee)
 		if err != nil {
-			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+			return nil, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		statedb.Prepare(tx.Hash(), i)
 		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv)
 		if err != nil {
-			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+			return nil, nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
+		if cfg.TraceAction {
+			actions, _ := tracer.GetResult()
+			if len(actions) > 0 {
+				internalTxs = append(internalTxs, &types.InternalTx{
+					TxHash:  tx.Hash(),
+					Actions: actions,
+				})
+			}
+		}
 	}
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	if err := p.engine.Finalize(p.bc, block, parent, statedb, receipts); err != nil {
-		return nil, nil, 0, fmt.Errorf("engine finalization check failed: %w", err)
+		return nil, nil, nil, 0, fmt.Errorf("engine finalization check failed: %w", err)
 	}
 
-	return receipts, allLogs, *usedGas, nil
+	return receipts, allLogs, internalTxs, *usedGas, nil
 }
 
 func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, error) {

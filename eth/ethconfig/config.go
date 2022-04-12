@@ -153,4 +153,7 @@ type Config struct {
 	OfflinePruning                bool
 	OfflinePruningBloomFilterSize uint64
 	OfflinePruningDataDirectory   string
+
+	// Enable record action trace
+	TraceAction bool `toml:",omitempty"`
 }

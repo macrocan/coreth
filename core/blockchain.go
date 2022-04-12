@@ -735,8 +735,8 @@ func (bc *BlockChain) newTip(block *types.Block) bool {
 // canonical chain.
 // writeBlockAndSetHead expects to be the last verification step during InsertBlock
 // since it creates a reference that will only be cleaned up by Accept/Reject.
-func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB) error {
-	if err := bc.writeBlockWithState(block, receipts, logs, state); err != nil {
+func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, internalTxs []*types.InternalTx, state *state.StateDB) error {
+	if err := bc.writeBlockWithState(block, receipts, logs, internalTxs, state); err != nil {
 		return err
 	}
 
@@ -753,7 +753,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 
 // writeBlockWithState writes the block and all associated state to the database,
 // but it expects the chain mutex to be held.
-func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB) error {
+func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, logs []*types.Log, internalTxs []*types.InternalTx, state *state.StateDB) error {
 	// Irrelevant of the canonical status, write the block itself to the database.
 	//
 	// Note all the components of block(hash->number map, header, body, receipts)
@@ -762,6 +762,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	rawdb.WriteBlock(blockBatch, block)
 	rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
 	rawdb.WritePreimages(blockBatch, state.Preimages())
+	if len(internalTxs) > 0 {
+		rawdb.WriteInternalTxs(blockBatch, block.Hash(), block.NumberU64(), internalTxs)
+	}
 	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
@@ -942,7 +945,7 @@ func (bc *BlockChain) insertBlock(block *types.Block, writes bool) error {
 	// If we have a followup block, run that against the current state to pre-cache
 	// transactions and probabilistically some of the account/storage trie nodes.
 	// Process block using the parent state as reference point
-	receipts, logs, usedGas, err := bc.processor.Process(block, parent, statedb, bc.vmConfig)
+	receipts, logs, internalTxs, usedGas, err := bc.processor.Process(block, parent, statedb, bc.vmConfig)
 	if err != nil {
 		bc.reportBlock(block, receipts, err)
 		return err
@@ -965,7 +968,7 @@ func (bc *BlockChain) insertBlock(block *types.Block, writes bool) error {
 	// writeBlockWithState (called within writeBlockAndSethead) creates a reference that
 	// will be cleaned up in Accept/Reject so we need to ensure an error cannot occur
 	// later in verification, since that would cause the referenced root to never be dereferenced.
-	if err := bc.writeBlockAndSetHead(block, receipts, logs, statedb); err != nil {
+	if err := bc.writeBlockAndSetHead(block, receipts, logs, internalTxs, statedb); err != nil {
 		return err
 	}
 	log.Debug("Inserted new block", "number", block.Number(), "hash", block.Hash(),
@@ -1211,7 +1214,7 @@ func (bc *BlockChain) reprocessBlock(parent *types.Block, current *types.Block) 
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("could not fetch state for (%s: %d): %v", parent.Hash().Hex(), parent.NumberU64(), err)
 	}
-	receipts, _, usedGas, err := bc.processor.Process(current, parent.Header(), statedb, vm.Config{})
+	receipts, _, _, usedGas, err := bc.processor.Process(current, parent.Header(), statedb, vm.Config{})
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to re-process block (%s: %d): %v", current.Hash().Hex(), current.NumberU64(), err)
 	}

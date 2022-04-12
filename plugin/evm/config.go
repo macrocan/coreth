@@ -111,6 +111,9 @@ type Config struct {
 
 	// VM2VM network
 	MaxOutboundActiveRequests int64 `json:"max-outbound-active-requests"`
+
+	// Enable record action trace
+	TraceAction bool `toml:",omitempty"`
 }
 
 // EthAPIs returns an array of strings representing the Eth APIs that should be enabled

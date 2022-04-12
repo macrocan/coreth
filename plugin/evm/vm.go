@@ -368,6 +368,7 @@ func (vm *VM) Initialize(
 	ethConfig.OfflinePruning = vm.config.OfflinePruning
 	ethConfig.OfflinePruningBloomFilterSize = vm.config.OfflinePruningBloomFilterSize
 	ethConfig.OfflinePruningDataDirectory = vm.config.OfflinePruningDataDirectory
+	ethConfig.TraceAction = vm.config.TraceAction
 
 	// Create directory for offline pruning
 	if len(ethConfig.OfflinePruningDataDirectory) != 0 {
