@@ -52,6 +52,7 @@ func (t *ActionLogger) CaptureStart(env *EVM, from common.Address, to common.Add
 			Value:        value,
 			Depth:        0,
 			Gas:          gas,
+			Input:        input,
 			TraceAddress: nil,
 		},
 		Calls: nil,
@@ -66,6 +67,11 @@ func (t *ActionLogger) CaptureEnd(output []byte, gasUsed uint64, _ time.Duration
 	t.callstack[0].GasUsed = gasUsed
 	if err != nil {
 		t.callstack[0].Error = err.Error()
+		if err.Error() == "execution reverted" && len(output) > 0 {
+			t.callstack[0].Output = output
+		}
+	} else {
+		t.callstack[0].Output = output
 	}
 }
 
@@ -104,6 +110,7 @@ func (t *ActionLogger) CaptureEnter(typ OpCode, from common.Address, to common.A
 			Value:        value,
 			Depth:        uint64(depth),
 			Gas:          gas,
+			Input:        input,
 			TraceAddress: traceAddr,
 		},
 	}
@@ -125,7 +132,9 @@ func (t *ActionLogger) CaptureExit(output []byte, gasUsed uint64, err error) {
 
 	call.GasUsed = gasUsed
 	call.Success = err == nil
-	if err != nil {
+	if err == nil {
+		call.Output = output
+	} else {
 		call.Error = err.Error()
 		if call.OpCode == "CREATE" || call.OpCode == "CREATE2" {
 			call.To = common.Address{}

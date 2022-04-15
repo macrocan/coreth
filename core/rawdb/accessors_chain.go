@@ -545,6 +545,7 @@ func DeleteBlock(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 // DeleteBlockWithoutNumber removes all block data associated with a hash, except
 // the hash to number mapping.
 func DeleteBlockWithoutNumber(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
+	DeleteInternalTxs(db, hash, number)
 	DeleteReceipts(db, hash, number)
 	deleteHeaderWithoutNumber(db, hash, number)
 	DeleteBody(db, hash, number)
